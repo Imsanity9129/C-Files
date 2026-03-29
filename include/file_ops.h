@@ -11,5 +11,6 @@ void free_file_entries(FileEntry *entries);
 int read_text_file(const char *path, char *buffer_out);
 int copy_file(const char *src, const char *dst);
 int delete_file(const char *path);
+int delete_path_recursive(const char *path);
 
 #endif /* CFILES_FILE_OPS_H */

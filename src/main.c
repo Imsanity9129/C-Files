@@ -37,6 +37,10 @@
 #define SEARCH_BOX_Y FILTER_ROW_Y
 #define SEARCH_BOX_WIDTH 420
 #define SEARCH_BOX_HEIGHT 32
+#define HIDDEN_BUTTON_X 40
+#define HIDDEN_BUTTON_Y FILTER_ROW_Y
+#define HIDDEN_BUTTON_WIDTH 190
+#define HIDDEN_BUTTON_HEIGHT 32
 #define SORT_BUTTON_X 690
 #define SORT_BUTTON_Y FILTER_ROW_Y
 #define SORT_BUTTON_WIDTH 140
@@ -65,14 +69,36 @@
 #define RENAME_BOX_Y 194
 #define RENAME_BOX_WIDTH 360
 #define RENAME_BOX_HEIGHT 32
+#define DELETE_CONFIRM_YES_X 300
+#define DELETE_CONFIRM_YES_Y 194
+#define DELETE_CONFIRM_YES_WIDTH 80
+#define DELETE_CONFIRM_YES_HEIGHT 32
+#define DELETE_CONFIRM_NO_X 390
+#define DELETE_CONFIRM_NO_Y 194
+#define DELETE_CONFIRM_NO_WIDTH 80
+#define DELETE_CONFIRM_NO_HEIGHT 32
 
-static size_t get_filtered_entry_count(const FileEntry *entries, size_t count, const char *search_query)
+static bool entry_matches_visible_filters(const FileEntry *entry,
+                                          const char *search_query,
+                                          bool show_hidden)
+{
+    if (!show_hidden && entry->name[0] == '.') {
+        return false;
+    }
+
+    return matches_search(entry->name, search_query);
+}
+
+static size_t get_filtered_entry_count(const FileEntry *entries,
+                                       size_t count,
+                                       const char *search_query,
+                                       bool show_hidden)
 {
     size_t filtered_count = 0;
     size_t i;
 
     for (i = 0; i < count; ++i) {
-        if (matches_search(entries[i].name, search_query)) {
+        if (entry_matches_visible_filters(&entries[i], search_query, show_hidden)) {
             filtered_count++;
         }
     }
@@ -83,13 +109,14 @@ static size_t get_filtered_entry_count(const FileEntry *entries, size_t count, c
 static int get_filtered_entry_index(const FileEntry *entries,
                                     size_t count,
                                     const char *search_query,
+                                    bool show_hidden,
                                     int filtered_index)
 {
     int current_filtered_index = 0;
     size_t i;
 
     for (i = 0; i < count; ++i) {
-        if (!matches_search(entries[i].name, search_query)) {
+        if (!entry_matches_visible_filters(&entries[i], search_query, show_hidden)) {
             continue;
         }
 
@@ -232,6 +259,16 @@ static Rectangle get_search_box_bounds(void)
     return box_bounds;
 }
 
+static Rectangle get_hidden_button_bounds(void)
+{
+    Rectangle button_bounds = {(float)HIDDEN_BUTTON_X,
+                               (float)HIDDEN_BUTTON_Y,
+                               (float)HIDDEN_BUTTON_WIDTH,
+                               (float)HIDDEN_BUTTON_HEIGHT};
+
+    return button_bounds;
+}
+
 static Rectangle get_sort_button_bounds(void)
 {
     Rectangle button_bounds = {(float)SORT_BUTTON_X,
@@ -302,6 +339,26 @@ static Rectangle get_rename_box_bounds(void)
     return box_bounds;
 }
 
+static Rectangle get_delete_confirm_yes_bounds(void)
+{
+    Rectangle button_bounds = {(float)DELETE_CONFIRM_YES_X,
+                               (float)DELETE_CONFIRM_YES_Y,
+                               (float)DELETE_CONFIRM_YES_WIDTH,
+                               (float)DELETE_CONFIRM_YES_HEIGHT};
+
+    return button_bounds;
+}
+
+static Rectangle get_delete_confirm_no_bounds(void)
+{
+    Rectangle button_bounds = {(float)DELETE_CONFIRM_NO_X,
+                               (float)DELETE_CONFIRM_NO_Y,
+                               (float)DELETE_CONFIRM_NO_WIDTH,
+                               (float)DELETE_CONFIRM_NO_HEIGHT};
+
+    return button_bounds;
+}
+
 static bool is_back_button_clicked(bool mouse_clicked, Vector2 mouse_position)
 {
     if (!mouse_clicked) {
@@ -327,6 +384,15 @@ static bool is_search_box_clicked(bool mouse_clicked, Vector2 mouse_position)
     }
 
     return CheckCollisionPointRec(mouse_position, get_search_box_bounds());
+}
+
+static bool is_hidden_button_clicked(bool mouse_clicked, Vector2 mouse_position)
+{
+    if (!mouse_clicked) {
+        return false;
+    }
+
+    return CheckCollisionPointRec(mouse_position, get_hidden_button_bounds());
 }
 
 static bool is_sort_button_clicked(bool mouse_clicked, Vector2 mouse_position)
@@ -381,6 +447,24 @@ static bool is_rename_button_clicked(bool mouse_clicked, Vector2 mouse_position)
     }
 
     return CheckCollisionPointRec(mouse_position, get_rename_button_bounds());
+}
+
+static bool is_delete_confirm_yes_clicked(bool mouse_clicked, Vector2 mouse_position)
+{
+    if (!mouse_clicked) {
+        return false;
+    }
+
+    return CheckCollisionPointRec(mouse_position, get_delete_confirm_yes_bounds());
+}
+
+static bool is_delete_confirm_no_clicked(bool mouse_clicked, Vector2 mouse_position)
+{
+    if (!mouse_clicked) {
+        return false;
+    }
+
+    return CheckCollisionPointRec(mouse_position, get_delete_confirm_no_bounds());
 }
 
 static int get_max_visible_rows(void)
@@ -442,11 +526,12 @@ static void update_scroll_offset(size_t count, int *scroll_offset)
 static int get_clicked_row_index(size_t count,
                                  const FileEntry *entries,
                                  const char *search_query,
+                                 bool show_hidden,
                                  int scroll_offset,
                                  bool mouse_clicked,
                                  Vector2 mouse_position)
 {
-    size_t filtered_count = get_filtered_entry_count(entries, count, search_query);
+    size_t filtered_count = get_filtered_entry_count(entries, count, search_query, show_hidden);
     size_t visible_count = get_visible_row_count(filtered_count, scroll_offset);
     size_t i;
 
@@ -466,6 +551,7 @@ static int get_clicked_row_index(size_t count,
             return get_filtered_entry_index(entries,
                                             count,
                                             search_query,
+                                            show_hidden,
                                             scroll_offset + (int)i);
         }
     }
@@ -551,10 +637,11 @@ static bool get_clicked_path_segment(const char *current_path,
 static void draw_file_list(const FileEntry *entries,
                            size_t count,
                            const char *search_query,
+                           bool show_hidden,
                            int selected_index,
                            int scroll_offset)
 {
-    size_t filtered_count = get_filtered_entry_count(entries, count, search_query);
+    size_t filtered_count = get_filtered_entry_count(entries, count, search_query, show_hidden);
     size_t visible_count = get_visible_row_count(filtered_count, scroll_offset);
     size_t i;
 
@@ -565,7 +652,11 @@ static void draw_file_list(const FileEntry *entries,
 
     for (i = 0; i < visible_count; ++i) {
         int filtered_index = scroll_offset + (int)i;
-        int entry_index = get_filtered_entry_index(entries, count, search_query, filtered_index);
+        int entry_index = get_filtered_entry_index(entries,
+                                                   count,
+                                                   search_query,
+                                                   show_hidden,
+                                                   filtered_index);
         char name_text[CF_NAME_MAX + 16];
         char name_display[CF_NAME_MAX + 16];
         char size_text[64];
@@ -693,6 +784,22 @@ static void draw_search_box(const char *search_query, bool search_active)
     }
 }
 
+static void draw_hidden_button(bool show_hidden)
+{
+    Rectangle button_bounds = get_hidden_button_bounds();
+    char button_text[32];
+
+    DrawRectangleRec(button_bounds, GRAY);
+    DrawRectangleLines((int)button_bounds.x,
+                       (int)button_bounds.y,
+                       (int)button_bounds.width,
+                       (int)button_bounds.height,
+                       BLACK);
+
+    snprintf(button_text, sizeof(button_text), "Hidden: %s", show_hidden ? "On" : "Off");
+    DrawText(button_text, HIDDEN_BUTTON_X + 10, HIDDEN_BUTTON_Y + 6, 20, RAYWHITE);
+}
+
 static void draw_sort_button(SortMode sort_mode)
 {
     Rectangle button_bounds = get_sort_button_bounds();
@@ -800,6 +907,32 @@ static void draw_rename_box(const char *rename_text)
                            20,
                            RENAME_BOX_WIDTH - 20);
     DrawText(display_text, RENAME_BOX_X + 10, RENAME_BOX_Y + 6, 20, BLACK);
+}
+
+static void draw_delete_confirmation(const char *item_name)
+{
+    Rectangle yes_bounds = get_delete_confirm_yes_bounds();
+    Rectangle no_bounds = get_delete_confirm_no_bounds();
+    char prompt_text[CF_STATUS_MAX];
+
+    snprintf(prompt_text, sizeof(prompt_text), "Delete \"%s\"?", item_name);
+    DrawText(prompt_text, INFO_X, INFO_Y, 20, BLACK);
+
+    DrawRectangleRec(yes_bounds, GRAY);
+    DrawRectangleLines((int)yes_bounds.x,
+                       (int)yes_bounds.y,
+                       (int)yes_bounds.width,
+                       (int)yes_bounds.height,
+                       BLACK);
+    DrawText("Yes", DELETE_CONFIRM_YES_X + 22, DELETE_CONFIRM_YES_Y + 6, 20, RAYWHITE);
+
+    DrawRectangleRec(no_bounds, GRAY);
+    DrawRectangleLines((int)no_bounds.x,
+                       (int)no_bounds.y,
+                       (int)no_bounds.width,
+                       (int)no_bounds.height,
+                       BLACK);
+    DrawText("No", DELETE_CONFIRM_NO_X + 25, DELETE_CONFIRM_NO_Y + 6, 20, RAYWHITE);
 }
 
 static bool build_paste_destination_path(const char *source_path,
@@ -1002,10 +1135,14 @@ int main(void)
     size_t visible_filtered_count = 0;
     int selected_index = -1;
     int scroll_offset = 0;
+    bool delete_confirm_mode = false;
+    bool show_hidden = false;
     bool search_active = false;
     bool rename_mode = false;
     SortMode sort_mode = SORT_NAME;
     char copied_file_path[CF_PATH_MAX];
+    char pending_delete_path[CF_PATH_MAX];
+    char pending_delete_name[CF_NAME_MAX];
     char rename_text[CF_NAME_MAX];
     char search_query[CF_SEARCH_MAX];
     char status_text[CF_STATUS_MAX];
@@ -1027,6 +1164,8 @@ int main(void)
     }
 
     copied_file_path[0] = '\0';
+    pending_delete_path[0] = '\0';
+    pending_delete_name[0] = '\0';
     rename_text[0] = '\0';
     search_query[0] = '\0';
     status_text[0] = '\0';
@@ -1038,19 +1177,20 @@ int main(void)
         bool mouse_clicked = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
         Vector2 mouse_position = GetMousePosition();
         bool search_clicked = is_search_box_clicked(mouse_clicked, mouse_position);
+        bool delete_click_handled = false;
 
-        if (mouse_clicked && !rename_mode) {
+        if (mouse_clicked && !rename_mode && !delete_confirm_mode) {
             search_active = search_clicked;
         }
 
         if (rename_mode) {
             update_rename_input(rename_text);
-        } else {
+        } else if (!delete_confirm_mode) {
             update_search_input(search_query, search_active, &scroll_offset);
         }
-        filtered_count = get_filtered_entry_count(entries, count, search_query);
+        filtered_count = get_filtered_entry_count(entries, count, search_query, show_hidden);
 
-        if (!rename_mode) {
+        if (!rename_mode && !delete_confirm_mode) {
             update_scroll_offset(filtered_count, &scroll_offset);
         }
         visible_filtered_count = get_visible_row_count(filtered_count, scroll_offset);
@@ -1067,7 +1207,11 @@ int main(void)
                 } else if (rename_text[0] == '\0') {
                     snprintf(status_text, sizeof(status_text), "Name cannot be empty");
                 } else {
+                    char old_name[CF_NAME_MAX];
                     char renamed_path[CF_PATH_MAX];
+                    char success_message[CF_STATUS_MAX];
+
+                    snprintf(old_name, sizeof(old_name), "%s", entries[selected_index].name);
 
                     if (!build_renamed_path(current_path,
                                             rename_text,
@@ -1077,6 +1221,11 @@ int main(void)
                     } else if (rename(entries[selected_index].full_path, renamed_path) != 0) {
                         snprintf(status_text, sizeof(status_text), "Failed to rename item");
                     } else {
+                        snprintf(success_message,
+                                 sizeof(success_message),
+                                 "Renamed: %s -> %s",
+                                 old_name,
+                                 rename_text);
                         rename_mode = false;
                         rename_text[0] = '\0';
 
@@ -1088,12 +1237,45 @@ int main(void)
                                               &selected_index,
                                               &scroll_offset,
                                               status_text,
-                                              "Renamed item",
+                                              success_message,
                                               "Failed to reload after rename")) {
                             selected_index = -1;
                         }
                     }
                 }
+            }
+        } else if (delete_confirm_mode) {
+            if (is_delete_confirm_yes_clicked(mouse_clicked, mouse_position)) {
+                char success_message[CF_STATUS_MAX];
+
+                snprintf(success_message,
+                         sizeof(success_message),
+                         "Deleted: %s",
+                         pending_delete_name);
+
+                if (delete_path_recursive(pending_delete_path) != 0) {
+                    snprintf(status_text, sizeof(status_text), "Failed to delete item");
+                } else if (!reload_directory(current_path,
+                                             current_path,
+                                             &entries,
+                                             &count,
+                                             sort_mode,
+                                             &selected_index,
+                                             &scroll_offset,
+                                             status_text,
+                                             success_message,
+                                             "Failed to reload after delete")) {
+                    selected_index = -1;
+                }
+
+                delete_confirm_mode = false;
+                pending_delete_path[0] = '\0';
+                pending_delete_name[0] = '\0';
+            } else if (is_delete_confirm_no_clicked(mouse_clicked, mouse_position)) {
+                delete_confirm_mode = false;
+                pending_delete_path[0] = '\0';
+                pending_delete_name[0] = '\0';
+                snprintf(status_text, sizeof(status_text), "Delete canceled");
             }
         } else if (is_back_button_clicked(mouse_clicked, mouse_position)) {
             char old_path[CF_PATH_MAX];
@@ -1119,7 +1301,8 @@ int main(void)
             }
         }
 
-        if (!rename_mode && is_refresh_button_clicked(mouse_clicked, mouse_position)) {
+        if (!rename_mode && !delete_confirm_mode &&
+            is_refresh_button_clicked(mouse_clicked, mouse_position)) {
             if (!reload_directory(current_path,
                                   current_path,
                                   &entries,
@@ -1134,7 +1317,16 @@ int main(void)
             }
         }
 
-        if (!rename_mode && is_sort_button_clicked(mouse_clicked, mouse_position)) {
+        if (!rename_mode && !delete_confirm_mode &&
+            is_hidden_button_clicked(mouse_clicked, mouse_position)) {
+            show_hidden = !show_hidden;
+            selected_index = -1;
+            scroll_offset = 0;
+            status_text[0] = '\0';
+        }
+
+        if (!rename_mode && !delete_confirm_mode &&
+            is_sort_button_clicked(mouse_clicked, mouse_position)) {
             sort_mode = get_next_sort_mode(sort_mode);
 
             if (sort_entries(entries, count, sort_mode) != 0) {
@@ -1146,7 +1338,8 @@ int main(void)
             }
         }
 
-        if (!rename_mode && is_copy_button_clicked(mouse_clicked, mouse_position)) {
+        if (!rename_mode && !delete_confirm_mode &&
+            is_copy_button_clicked(mouse_clicked, mouse_position)) {
             if (selected_index < 0 || (size_t)selected_index >= count) {
                 snprintf(status_text, sizeof(status_text), "Select a file to copy");
             } else if (entries[selected_index].is_directory) {
@@ -1166,7 +1359,8 @@ int main(void)
             }
         }
 
-        if (!rename_mode && is_paste_button_clicked(mouse_clicked, mouse_position)) {
+        if (!rename_mode && !delete_confirm_mode &&
+            is_paste_button_clicked(mouse_clicked, mouse_position)) {
             if (copied_file_path[0] == '\0') {
                 snprintf(status_text, sizeof(status_text), "No copied file to paste");
             } else {
@@ -1197,34 +1391,29 @@ int main(void)
             }
         }
 
-        if (!rename_mode && is_delete_button_clicked(mouse_clicked, mouse_position)) {
-            if (selected_index < 0 || (size_t)selected_index >= count) {
-                snprintf(status_text, sizeof(status_text), "Select a file to delete");
-            } else if (entries[selected_index].is_directory) {
-                snprintf(status_text, sizeof(status_text), "Cannot delete directories yet");
-            } else {
-                struct stat st;
+        if (!rename_mode && !delete_confirm_mode &&
+            is_delete_button_clicked(mouse_clicked, mouse_position)) {
+            delete_click_handled = true;
 
-                if (stat(entries[selected_index].full_path, &st) != 0 || !S_ISREG(st.st_mode)) {
-                    snprintf(status_text, sizeof(status_text), "Only regular files can be deleted");
-                } else if (delete_file(entries[selected_index].full_path) != 0) {
-                    snprintf(status_text, sizeof(status_text), "Failed to delete file");
-                } else if (!reload_directory(current_path,
-                                             current_path,
-                                             &entries,
-                                             &count,
-                                             sort_mode,
-                                             &selected_index,
-                                             &scroll_offset,
-                                             status_text,
-                                             "Deleted file",
-                                             "Failed to reload after delete")) {
-                    selected_index = -1;
-                }
+            if (selected_index < 0 || (size_t)selected_index >= count) {
+                snprintf(status_text, sizeof(status_text), "Select an item to delete");
+            } else {
+                snprintf(pending_delete_path,
+                         sizeof(pending_delete_path),
+                         "%s",
+                         entries[selected_index].full_path);
+                snprintf(pending_delete_name,
+                         sizeof(pending_delete_name),
+                         "%s",
+                         entries[selected_index].name);
+                delete_confirm_mode = true;
+                search_active = false;
+                snprintf(status_text, sizeof(status_text), "Confirm delete");
             }
         }
 
-        if (!rename_mode && is_new_folder_button_clicked(mouse_clicked, mouse_position)) {
+        if (!rename_mode && !delete_confirm_mode &&
+            is_new_folder_button_clicked(mouse_clicked, mouse_position)) {
             char created_path[CF_PATH_MAX];
 
             if (!create_new_folder_in_directory(current_path, created_path, sizeof(created_path))) {
@@ -1243,7 +1432,8 @@ int main(void)
             }
         }
 
-        if (!rename_mode && is_rename_button_clicked(mouse_clicked, mouse_position)) {
+        if (!rename_mode && !delete_confirm_mode &&
+            is_rename_button_clicked(mouse_clicked, mouse_position)) {
             if (selected_index < 0 || (size_t)selected_index >= count) {
                 snprintf(status_text, sizeof(status_text), "Select an item to rename");
             } else {
@@ -1256,7 +1446,7 @@ int main(void)
             }
         }
 
-        if (!rename_mode) {
+        if (!rename_mode && !delete_confirm_mode && !delete_click_handled) {
             char next_path[CF_PATH_MAX];
 
             if (get_clicked_path_segment(current_path, mouse_clicked, mouse_position, next_path) &&
@@ -1276,18 +1466,25 @@ int main(void)
             }
         }
 
-        if (!rename_mode) {
+        if (!rename_mode && !delete_confirm_mode && !delete_click_handled) {
             int clicked_index = get_clicked_row_index(count,
                                                       entries,
                                                       search_query,
+                                                      show_hidden,
                                                       scroll_offset,
                                                       mouse_clicked,
                                                       mouse_position);
 
             if (clicked_index >= 0) {
+                bool open_directory = false;
+
+                if (clicked_index == selected_index && entries[clicked_index].is_directory) {
+                    open_directory = true;
+                }
+
                 selected_index = clicked_index;
 
-                if (entries[clicked_index].is_directory) {
+                if (open_directory) {
                     char next_path[CF_PATH_MAX];
                     snprintf(next_path, sizeof(next_path), "%s", current_path);
 
@@ -1317,6 +1514,7 @@ int main(void)
         DrawText("C-Files", TITLE_X, TITLE_Y, 32, BLACK);
         draw_back_button();
         draw_refresh_button();
+        draw_hidden_button(show_hidden);
         draw_search_box(search_query, search_active);
         draw_sort_button(sort_mode);
         draw_copy_button();
@@ -1328,6 +1526,8 @@ int main(void)
 
         if (rename_mode) {
             draw_rename_box(rename_text);
+        } else if (delete_confirm_mode) {
+            draw_delete_confirmation(pending_delete_name);
         } else {
             char count_text[128];
 
@@ -1342,7 +1542,7 @@ int main(void)
         if (status_text[0] != '\0') {
             DrawText(status_text, INFO_X, STATUS_Y, 20, MAROON);
         }
-        draw_file_list(entries, count, search_query, selected_index, scroll_offset);
+        draw_file_list(entries, count, search_query, show_hidden, selected_index, scroll_offset);
 
         EndDrawing();
     }

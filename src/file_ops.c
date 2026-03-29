@@ -277,3 +277,62 @@ int delete_file(const char *path)
 
     return unlink(path);
 }
+
+int delete_path_recursive(const char *path)
+{
+    struct stat st;
+
+    if (path == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (lstat(path, &st) != 0) {
+        return -1;
+    }
+
+    if (!S_ISDIR(st.st_mode)) {
+        return unlink(path);
+    }
+
+    {
+        DIR *dir = opendir(path);
+        struct dirent *entry;
+
+        if (dir == NULL) {
+            return -1;
+        }
+
+        while ((entry = readdir(dir)) != NULL) {
+            char child_path[CF_PATH_MAX];
+            int written;
+
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+                continue;
+            }
+
+            written = snprintf(child_path, sizeof(child_path), "%s/%s", path, entry->d_name);
+            if (written < 0 || (size_t)written >= sizeof(child_path)) {
+                int saved_errno = ENAMETOOLONG;
+
+                (void)closedir(dir);
+                errno = saved_errno;
+                return -1;
+            }
+
+            if (delete_path_recursive(child_path) != 0) {
+                int saved_errno = errno;
+
+                (void)closedir(dir);
+                errno = saved_errno;
+                return -1;
+            }
+        }
+
+        if (closedir(dir) != 0) {
+            return -1;
+        }
+    }
+
+    return rmdir(path);
+}
