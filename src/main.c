@@ -16,6 +16,48 @@
 #define ROW_HEIGHT 24
 #define ROW_START_Y (LIST_TOP + 35)
 
+static bool reload_directory(char *current_path,
+                             const char *next_path,
+                             FileEntry **entries,
+                             size_t *count,
+                             int *selected_index,
+                             char *status_text,
+                             const char *success_message,
+                             const char *error_message)
+{
+    FileEntry *new_entries = NULL;
+    size_t new_count = 0;
+
+    if (load_directory(next_path, &new_entries, &new_count) != 0) {
+        snprintf(status_text, CF_STATUS_MAX, "%s", error_message);
+        return false;
+    }
+
+    free_file_entries(*entries);
+    *entries = new_entries;
+    *count = new_count;
+    *selected_index = -1;
+    snprintf(current_path, CF_PATH_MAX, "%s", next_path);
+    snprintf(status_text, CF_STATUS_MAX, "%s", success_message);
+    return true;
+}
+
+static Rectangle get_up_button_bounds(void)
+{
+    Rectangle button_bounds = {40.0f, 92.0f, 72.0f, 32.0f};
+
+    return button_bounds;
+}
+
+static bool is_up_button_clicked(void)
+{
+    if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        return false;
+    }
+
+    return CheckCollisionPointRec(GetMousePosition(), get_up_button_bounds());
+}
+
 static size_t get_visible_row_count(size_t count)
 {
     const int max_visible_rows = (WINDOW_HEIGHT - LIST_TOP - 20) / ROW_HEIGHT;
@@ -96,6 +138,19 @@ static void draw_file_list(const FileEntry *entries, size_t count, int selected_
     }
 }
 
+static void draw_up_button(void)
+{
+    Rectangle button_bounds = get_up_button_bounds();
+
+    DrawRectangleRec(button_bounds, GRAY);
+    DrawRectangleLines((int)button_bounds.x,
+                       (int)button_bounds.y,
+                       (int)button_bounds.width,
+                       (int)button_bounds.height,
+                       BLACK);
+    DrawText("Up", (int)button_bounds.x + 21, (int)button_bounds.y + 6, 20, RAYWHITE);
+}
+
 int main(void)
 {
     char current_path[CF_PATH_MAX];
@@ -120,6 +175,28 @@ int main(void)
     SetTargetFPS(60);
 
     while (!WindowShouldClose()) {
+        if (is_up_button_clicked()) {
+            char old_path[CF_PATH_MAX];
+
+            snprintf(old_path, sizeof(old_path), "%s", current_path);
+
+            if (go_up_directory(current_path) == 0) {
+                if (!reload_directory(current_path,
+                                      current_path,
+                                      &entries,
+                                      &count,
+                                      &selected_index,
+                                      status_text,
+                                      "Moved to parent directory",
+                                      "Failed to load parent directory")) {
+                    snprintf(current_path, sizeof(current_path), "%s", old_path);
+                    selected_index = -1;
+                }
+            } else {
+                snprintf(status_text, sizeof(status_text), "Failed to go up");
+            }
+        }
+
         int clicked_index = get_clicked_row_index(count);
 
         if (clicked_index >= 0) {
@@ -127,32 +204,18 @@ int main(void)
 
             if (entries[clicked_index].is_directory) {
                 char next_path[CF_PATH_MAX];
-                char old_path[CF_PATH_MAX];
-                FileEntry *old_entries = entries;
-
-                snprintf(old_path, sizeof(old_path), "%s", current_path);
                 snprintf(next_path, sizeof(next_path), "%s", current_path);
 
                 if (go_to_directory(next_path, entries[clicked_index].name) == 0) {
-                    free_file_entries(old_entries);
-                    entries = NULL;
-                    count = 0;
-
-                    if (load_directory(next_path, &entries, &count) == 0) {
-                        snprintf(current_path, sizeof(current_path), "%s", next_path);
-                        snprintf(status_text, sizeof(status_text), "Entered directory");
+                    if (!reload_directory(current_path,
+                                          next_path,
+                                          &entries,
+                                          &count,
+                                          &selected_index,
+                                          status_text,
+                                          "Entered directory",
+                                          "Failed to load directory")) {
                         selected_index = -1;
-                    } else {
-                        snprintf(status_text, sizeof(status_text), "Failed to load directory");
-
-                        if (load_directory(old_path, &entries, &count) == 0) {
-                            snprintf(current_path, sizeof(current_path), "%s", old_path);
-                            selected_index = -1;
-                        } else {
-                            count = 0;
-                            entries = NULL;
-                            selected_index = -1;
-                        }
                     }
                 } else {
                     snprintf(status_text, sizeof(status_text), "Failed to enter directory");
@@ -164,7 +227,8 @@ int main(void)
         ClearBackground(RAYWHITE);
 
         DrawText("C-Files", 40, 40, 32, BLACK);
-        DrawText(current_path, 40, 100, 20, DARKGRAY);
+        draw_up_button();
+        DrawText(current_path, 130, 100, 20, DARKGRAY);
 
         {
             char count_text[128];
