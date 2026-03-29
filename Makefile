@@ -1,5 +1,6 @@
 CC = gcc
-CFLAGS = -std=c11 -Wall -Wextra -Wpedantic -Iinclude
+CFLAGS = -std=c11 -Wall -Wextra -Wpedantic -Iinclude -I/opt/homebrew/include
+LDFLAGS = -L/opt/homebrew/lib -lraylib -framework OpenGL -framework Cocoa -framework IOKit -framework CoreAudio
 TARGET = c-files
 SOURCES = src/main.c src/file_ops.c src/nav.c src/search.c src/sort.c
 OBJECTS = src/main.o src/file_ops.o src/nav.o src/search.o src/sort.o
@@ -7,7 +8,7 @@ OBJECTS = src/main.o src/file_ops.o src/nav.o src/search.o src/sort.o
 all: $(TARGET)
 
 $(TARGET): $(OBJECTS)
-	$(CC) $(CFLAGS) $(OBJECTS) -o $(TARGET)
+	$(CC) $(CFLAGS) $(OBJECTS) -o $(TARGET) $(LDFLAGS)
 
 src/main.o: src/main.c include/models.h include/file_ops.h include/search.h include/sort.h
 	$(CC) $(CFLAGS) -c src/main.c -o src/main.o
