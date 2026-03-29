@@ -12,6 +12,9 @@
 
 #define WINDOW_WIDTH 1000
 #define WINDOW_HEIGHT 600
+#define PATH_X 140
+#define PATH_Y 100
+#define PATH_FONT_SIZE 20
 #define LIST_TOP 230
 #define ROW_HEIGHT 24
 #define ROW_START_Y (LIST_TOP + 35)
@@ -42,20 +45,20 @@ static bool reload_directory(char *current_path,
     return true;
 }
 
-static Rectangle get_up_button_bounds(void)
+static Rectangle get_back_button_bounds(void)
 {
-    Rectangle button_bounds = {40.0f, 92.0f, 72.0f, 32.0f};
+    Rectangle button_bounds = {40.0f, 92.0f, 82.0f, 32.0f};
 
     return button_bounds;
 }
 
-static bool is_up_button_clicked(void)
+static bool is_back_button_clicked(bool mouse_clicked, Vector2 mouse_position)
 {
-    if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+    if (!mouse_clicked) {
         return false;
     }
 
-    return CheckCollisionPointRec(GetMousePosition(), get_up_button_bounds());
+    return CheckCollisionPointRec(mouse_position, get_back_button_bounds());
 }
 
 static size_t get_visible_row_count(size_t count)
@@ -70,13 +73,12 @@ static size_t get_visible_row_count(size_t count)
     return visible_count;
 }
 
-static int get_clicked_row_index(size_t count)
+static int get_clicked_row_index(size_t count, bool mouse_clicked, Vector2 mouse_position)
 {
-    Vector2 mouse_position = GetMousePosition();
     size_t visible_count = get_visible_row_count(count);
     size_t i;
 
-    if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+    if (!mouse_clicked) {
         return -1;
     }
 
@@ -94,6 +96,81 @@ static int get_clicked_row_index(size_t count)
     }
 
     return -1;
+}
+
+static bool get_clicked_path_segment(const char *current_path,
+                                     bool mouse_clicked,
+                                     Vector2 mouse_position,
+                                     char *next_path)
+{
+    char built_path[CF_PATH_MAX];
+    const char *cursor = current_path;
+    int x = PATH_X;
+
+    if (!mouse_clicked) {
+        return false;
+    }
+
+    built_path[0] = '\0';
+
+    if (current_path[0] == '/') {
+        int slash_width = MeasureText("/", PATH_FONT_SIZE);
+        Rectangle root_bounds = {(float)x, (float)PATH_Y, (float)slash_width, (float)PATH_FONT_SIZE};
+
+        snprintf(built_path, sizeof(built_path), "/");
+
+        if (CheckCollisionPointRec(mouse_position, root_bounds)) {
+            snprintf(next_path, CF_PATH_MAX, "/");
+            return true;
+        }
+
+        x += slash_width + 6;
+        cursor++;
+    }
+
+    while (*cursor != '\0') {
+        char segment[CF_NAME_MAX];
+        size_t segment_length = 0;
+        int segment_width;
+        Rectangle segment_bounds;
+
+        while (cursor[segment_length] != '\0' && cursor[segment_length] != '/') {
+            segment_length++;
+        }
+
+        if (segment_length >= sizeof(segment)) {
+            segment_length = sizeof(segment) - 1;
+        }
+
+        memcpy(segment, cursor, segment_length);
+        segment[segment_length] = '\0';
+
+        if (strcmp(built_path, "/") == 0) {
+            snprintf(next_path, CF_PATH_MAX, "/%s", segment);
+        } else if (built_path[0] == '\0') {
+            snprintf(next_path, CF_PATH_MAX, "%s", segment);
+        } else {
+            snprintf(next_path, CF_PATH_MAX, "%s/%s", built_path, segment);
+        }
+
+        segment_width = MeasureText(segment, PATH_FONT_SIZE);
+        segment_bounds = (Rectangle){(float)x, (float)PATH_Y, (float)segment_width, (float)PATH_FONT_SIZE};
+
+        if (CheckCollisionPointRec(mouse_position, segment_bounds)) {
+            return true;
+        }
+
+        snprintf(built_path, sizeof(built_path), "%s", next_path);
+        x += segment_width;
+
+        cursor += segment_length;
+        if (*cursor == '/') {
+            x += MeasureText("/", PATH_FONT_SIZE) + 6;
+            cursor++;
+        }
+    }
+
+    return false;
 }
 
 static void draw_file_list(const FileEntry *entries, size_t count, int selected_index)
@@ -138,9 +215,9 @@ static void draw_file_list(const FileEntry *entries, size_t count, int selected_
     }
 }
 
-static void draw_up_button(void)
+static void draw_back_button(void)
 {
-    Rectangle button_bounds = get_up_button_bounds();
+    Rectangle button_bounds = get_back_button_bounds();
 
     DrawRectangleRec(button_bounds, GRAY);
     DrawRectangleLines((int)button_bounds.x,
@@ -148,7 +225,45 @@ static void draw_up_button(void)
                        (int)button_bounds.width,
                        (int)button_bounds.height,
                        BLACK);
-    DrawText("Up", (int)button_bounds.x + 21, (int)button_bounds.y + 6, 20, RAYWHITE);
+    DrawText("Back", (int)button_bounds.x + 10, (int)button_bounds.y + 6, 20, RAYWHITE);
+}
+
+static void draw_path_segments(const char *current_path)
+{
+    const char *cursor = current_path;
+    int x = PATH_X;
+
+    if (current_path[0] == '/') {
+        DrawText("/", x, PATH_Y, PATH_FONT_SIZE, BLUE);
+        x += MeasureText("/", PATH_FONT_SIZE) + 6;
+        cursor++;
+    }
+
+    while (*cursor != '\0') {
+        char segment[CF_NAME_MAX];
+        size_t segment_length = 0;
+
+        while (cursor[segment_length] != '\0' && cursor[segment_length] != '/') {
+            segment_length++;
+        }
+
+        if (segment_length >= sizeof(segment)) {
+            segment_length = sizeof(segment) - 1;
+        }
+
+        memcpy(segment, cursor, segment_length);
+        segment[segment_length] = '\0';
+
+        DrawText(segment, x, PATH_Y, PATH_FONT_SIZE, BLUE);
+        x += MeasureText(segment, PATH_FONT_SIZE);
+
+        cursor += segment_length;
+        if (*cursor == '/') {
+            DrawText("/", x + 2, PATH_Y, PATH_FONT_SIZE, DARKGRAY);
+            x += MeasureText("/", PATH_FONT_SIZE) + 6;
+            cursor++;
+        }
+    }
 }
 
 int main(void)
@@ -169,13 +284,16 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    snprintf(status_text, sizeof(status_text), "GUI skeleton working");
+    status_text[0] = '\0';
 
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "C-Files");
     SetTargetFPS(60);
 
     while (!WindowShouldClose()) {
-        if (is_up_button_clicked()) {
+        bool mouse_clicked = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+        Vector2 mouse_position = GetMousePosition();
+
+        if (is_back_button_clicked(mouse_clicked, mouse_position)) {
             char old_path[CF_PATH_MAX];
 
             snprintf(old_path, sizeof(old_path), "%s", current_path);
@@ -187,7 +305,7 @@ int main(void)
                                       &count,
                                       &selected_index,
                                       status_text,
-                                      "Moved to parent directory",
+                                      "",
                                       "Failed to load parent directory")) {
                     snprintf(current_path, sizeof(current_path), "%s", old_path);
                     selected_index = -1;
@@ -197,28 +315,48 @@ int main(void)
             }
         }
 
-        int clicked_index = get_clicked_row_index(count);
+        {
+            char next_path[CF_PATH_MAX];
 
-        if (clicked_index >= 0) {
-            selected_index = clicked_index;
+            if (get_clicked_path_segment(current_path, mouse_clicked, mouse_position, next_path) &&
+                strcmp(next_path, current_path) != 0) {
+                if (!reload_directory(current_path,
+                                      next_path,
+                                      &entries,
+                                      &count,
+                                      &selected_index,
+                                      status_text,
+                                      "",
+                                      "Failed to load selected path")) {
+                    selected_index = -1;
+                }
+            }
+        }
 
-            if (entries[clicked_index].is_directory) {
-                char next_path[CF_PATH_MAX];
-                snprintf(next_path, sizeof(next_path), "%s", current_path);
+        {
+            int clicked_index = get_clicked_row_index(count, mouse_clicked, mouse_position);
 
-                if (go_to_directory(next_path, entries[clicked_index].name) == 0) {
-                    if (!reload_directory(current_path,
-                                          next_path,
-                                          &entries,
-                                          &count,
-                                          &selected_index,
-                                          status_text,
-                                          "Entered directory",
-                                          "Failed to load directory")) {
-                        selected_index = -1;
+            if (clicked_index >= 0) {
+                selected_index = clicked_index;
+
+                if (entries[clicked_index].is_directory) {
+                    char next_path[CF_PATH_MAX];
+                    snprintf(next_path, sizeof(next_path), "%s", current_path);
+
+                    if (go_to_directory(next_path, entries[clicked_index].name) == 0) {
+                        if (!reload_directory(current_path,
+                                              next_path,
+                                              &entries,
+                                              &count,
+                                              &selected_index,
+                                              status_text,
+                                              "",
+                                              "Failed to load directory")) {
+                            selected_index = -1;
+                        }
+                    } else {
+                        snprintf(status_text, sizeof(status_text), "Failed to enter directory");
                     }
-                } else {
-                    snprintf(status_text, sizeof(status_text), "Failed to enter directory");
                 }
             }
         }
@@ -227,8 +365,8 @@ int main(void)
         ClearBackground(RAYWHITE);
 
         DrawText("C-Files", 40, 40, 32, BLACK);
-        draw_up_button();
-        DrawText(current_path, 130, 100, 20, DARKGRAY);
+        draw_back_button();
+        draw_path_segments(current_path);
 
         {
             char count_text[128];
@@ -237,7 +375,9 @@ int main(void)
             DrawText(count_text, 40, 140, 20, BLACK);
         }
 
-        DrawText(status_text, 40, 180, 20, DARKGRAY);
+        if (status_text[0] != '\0') {
+            DrawText(status_text, 40, 180, 20, MAROON);
+        }
         draw_file_list(entries, count, selected_index);
 
         EndDrawing();
