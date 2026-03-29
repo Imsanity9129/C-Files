@@ -4,55 +4,13 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "raylib.h"
+#include <raylib.h>
 
 #include "file_ops.h"
 #include "models.h"
 
 #define WINDOW_WIDTH 1000
 #define WINDOW_HEIGHT 600
-
-static void draw_file_list(const FileEntry *entries, size_t count)
-{
-    const int list_top = 230;
-    const int row_height = 24;
-    const int max_visible_rows = (WINDOW_HEIGHT - list_top - 20) / row_height;
-    size_t visible_count = count;
-    size_t i;
-
-    if ((int)visible_count > max_visible_rows) {
-        visible_count = (size_t)max_visible_rows;
-    }
-
-    DrawText("Name", 40, list_top, 20, BLACK);
-    DrawText("Size", 420, list_top, 20, BLACK);
-    DrawText("Type", 540, list_top, 20, BLACK);
-    DrawText("Modified", 680, list_top, 20, BLACK);
-
-    for (i = 0; i < visible_count; ++i) {
-        char name_text[CF_NAME_MAX + 16];
-        char size_text[64];
-        int row_y = list_top + 35 + ((int)i * row_height);
-        Color row_color = entries[i].is_directory ? BLUE : DARKGRAY;
-
-        snprintf(name_text,
-                 sizeof(name_text),
-                 "%s %s",
-                 entries[i].is_directory ? "[DIR]" : "[FILE]",
-                 entries[i].name);
-
-        if (entries[i].is_directory) {
-            snprintf(size_text, sizeof(size_text), "--");
-        } else {
-            snprintf(size_text, sizeof(size_text), "%zu", entries[i].size);
-        }
-
-        DrawText(name_text, 40, row_y, 18, row_color);
-        DrawText(size_text, 420, row_y, 18, DARKGRAY);
-        DrawText(entries[i].type, 540, row_y, 18, DARKGRAY);
-        DrawText(entries[i].modified_time_str, 680, row_y, 18, DARKGRAY);
-    }
-}
 
 int main(void)
 {
@@ -91,7 +49,6 @@ int main(void)
         }
 
         DrawText(status_text, 40, 180, 20, DARKGRAY);
-        draw_file_list(entries, count);
 
         EndDrawing();
     }
