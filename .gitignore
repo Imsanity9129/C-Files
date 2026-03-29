@@ -1,0 +1,6 @@
+c-files
+*.o
+*.out
+.DS_Store
+.vscode/
+*.dSYM/
